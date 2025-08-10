@@ -10,10 +10,15 @@ import {
   EllipsisVerticalIcon
 } from '@heroicons/react/24/outline';
 import MessageBubble from './MessageBubble';
+import { apiClient } from '../config/api'; // Import your API client
 
-const ChatWindow = ({ selectedChat, messages, onSendMessage, isMobile }) => {
+const ChatWindow = ({ selectedChat, isMobile }) => {
   const [newMessage, setNewMessage] = useState('');
+  const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [sending, setSending] = useState(false);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -30,6 +35,35 @@ const ChatWindow = ({ selectedChat, messages, onSendMessage, isMobile }) => {
       setTimeout(() => textareaRef.current?.focus(), 100);
     }
   }, [selectedChat, isMobile]);
+
+  // Fetch messages when selectedChat changes
+  useEffect(() => {
+    if (selectedChat) {
+      fetchMessages();
+    }
+  }, [selectedChat]);
+
+  const fetchMessages = async () => {
+    if (!selectedChat) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await apiClient.get(`/api/messages/${selectedChat.waId}`);
+      
+      if (response.success) {
+        setMessages(response.data);
+      } else {
+        setError('Failed to load messages');
+      }
+    } catch (err) {
+      console.error('Error fetching messages:', err);
+      setError('Unable to load messages');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
@@ -50,16 +84,70 @@ const ChatWindow = ({ selectedChat, messages, onSendMessage, isMobile }) => {
     }
   };
 
-  const handleSendMessage = (e) => {
+  const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (newMessage.trim() && onSendMessage) {
-      onSendMessage(newMessage.trim());
-      setNewMessage('');
-      setIsTyping(false);
-      
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
+    if (!newMessage.trim() || !selectedChat || sending) return;
+
+    const messageText = newMessage.trim();
+    setNewMessage('');
+    setSending(true);
+    
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+
+    // Optimistically add message to UI
+    const tempMessage = {
+      _id: `temp-${Date.now()}`,
+      body: messageText,
+      fromMe: true,
+      timestamp: new Date().toISOString(),
+      status: 'sending'
+    };
+    
+    setMessages(prev => [...prev, tempMessage]);
+    setIsTyping(false);
+
+    try {
+      const response = await apiClient.post('/api/messages/send', {
+        to: selectedChat.waId,
+        body: messageText
+      });
+
+      if (response.success) {
+        // Replace temp message with actual message from backend
+        setMessages(prev => 
+          prev.map(msg => 
+            msg._id === tempMessage._id 
+              ? { ...response.data, status: 'sent' }
+              : msg
+          )
+        );
+      } else {
+        // Mark message as failed
+        setMessages(prev => 
+          prev.map(msg => 
+            msg._id === tempMessage._id 
+              ? { ...msg, status: 'failed' }
+              : msg
+          )
+        );
+        setError('Failed to send message');
       }
+    } catch (err) {
+      console.error('Error sending message:', err);
+      // Mark message as failed
+      setMessages(prev => 
+        prev.map(msg => 
+          msg._id === tempMessage._id 
+            ? { ...msg, status: 'failed' }
+            : msg
+        )
+      );
+      setError('Unable to send message');
+    } finally {
+      setSending(false);
       
       if (!isMobile) {
         setTimeout(() => textareaRef.current?.focus(), 100);
@@ -71,6 +159,55 @@ const ChatWindow = ({ selectedChat, messages, onSendMessage, isMobile }) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage(e);
+    }
+  };
+
+  const retryFailedMessage = async (failedMessage) => {
+    if (sending) return;
+    
+    setSending(true);
+    setMessages(prev => 
+      prev.map(msg => 
+        msg._id === failedMessage._id 
+          ? { ...msg, status: 'sending' }
+          : msg
+      )
+    );
+
+    try {
+      const response = await apiClient.post('/api/messages/send', {
+        to: selectedChat.waId,
+        body: failedMessage.body
+      });
+
+      if (response.success) {
+        setMessages(prev => 
+          prev.map(msg => 
+            msg._id === failedMessage._id 
+              ? { ...response.data, status: 'sent' }
+              : msg
+          )
+        );
+      } else {
+        setMessages(prev => 
+          prev.map(msg => 
+            msg._id === failedMessage._id 
+              ? { ...msg, status: 'failed' }
+              : msg
+          )
+        );
+      }
+    } catch (err) {
+      console.error('Error retrying message:', err);
+      setMessages(prev => 
+        prev.map(msg => 
+          msg._id === failedMessage._id 
+            ? { ...msg, status: 'failed' }
+            : msg
+        )
+      );
+    } finally {
+      setSending(false);
     }
   };
 
@@ -118,16 +255,22 @@ const ChatWindow = ({ selectedChat, messages, onSendMessage, isMobile }) => {
                   src={selectedChat.profilePic}
                   alt={selectedChat.name}
                   className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
                 />
-              ) : (
-                <span className="text-gray-600 font-semibold text-sm">
-                  {selectedChat.name?.charAt(0)?.toUpperCase() || '?'}
-                </span>
-              )}
+              ) : null}
+              <span 
+                className="text-gray-600 font-semibold text-sm"
+                style={{ display: selectedChat.profilePic ? 'none' : 'flex' }}
+              >
+                {selectedChat.name?.charAt(0)?.toUpperCase() || selectedChat.waId?.charAt(0) || '?'}
+              </span>
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-gray-900 text-base truncate">
-                {selectedChat.name}
+                {selectedChat.name || selectedChat.waId}
               </h3>
               <p className="text-sm text-gray-500">
                 {isTyping ? (
@@ -140,6 +283,13 @@ const ChatWindow = ({ selectedChat, messages, onSendMessage, isMobile }) => {
           </div>
           
           <div className="flex items-center space-x-2 ml-4">
+            <button 
+              onClick={fetchMessages}
+              className="p-2 text-gray-600 hover:bg-gray-200 rounded-full transition-colors touch-target"
+              title="Refresh messages"
+            >
+              <MagnifyingGlassIcon className="w-5 h-5" />
+            </button>
             <button className="p-2 text-gray-600 hover:bg-gray-200 rounded-full transition-colors touch-target">
               <VideoCameraIcon className="w-5 h-5" />
             </button>
@@ -147,10 +297,22 @@ const ChatWindow = ({ selectedChat, messages, onSendMessage, isMobile }) => {
               <PhoneIcon className="w-5 h-5" />
             </button>
             <button className="p-2 text-gray-600 hover:bg-gray-200 rounded-full transition-colors touch-target">
-              <MagnifyingGlassIcon className="w-5 h-5" />
-            </button>
-            <button className="p-2 text-gray-600 hover:bg-gray-200 rounded-full transition-colors touch-target">
               <EllipsisVerticalIcon className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border-l-4 border-red-400 p-3 m-4">
+          <div className="flex items-center">
+            <p className="text-sm text-red-700 flex-1">{error}</p>
+            <button 
+              onClick={() => setError(null)}
+              className="text-red-400 hover:text-red-600 ml-4"
+            >
+              ×
             </button>
           </div>
         </div>
@@ -164,24 +326,43 @@ const ChatWindow = ({ selectedChat, messages, onSendMessage, isMobile }) => {
           WebkitOverflowScrolling: 'touch'
         }}
       >
-        {messages.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 text-center shadow-sm">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-whatsapp-green mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading messages...</p>
+            </div>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 text-center shadow-sm max-w-sm">
               <div className="text-4xl mb-3">👋</div>
               <h3 className="font-semibold text-gray-800 mb-2">Start the conversation</h3>
               <p className="text-gray-600 text-sm">
-                Send a message to begin your chat with {selectedChat.name}
+                Send a message to begin your chat with {selectedChat.name || selectedChat.waId}
               </p>
             </div>
           </div>
         ) : (
           <div className="space-y-1 py-4">
             {messages.map((message, index) => (
-              <MessageBubble 
-                key={message._id || message.messageId || `msg-${index}`} 
-                message={message}
-                isLast={index === messages.length - 1}
-              />
+              <div key={message._id || message.messageId || `msg-${index}`}>
+                <MessageBubble 
+                  message={message}
+                  isLast={index === messages.length - 1}
+                />
+                {message.status === 'failed' && (
+                  <div className="flex justify-end mb-2">
+                    <button
+                      onClick={() => retryFailedMessage(message)}
+                      className="text-xs text-red-500 hover:text-red-700 underline"
+                      disabled={sending}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+              </div>
             ))}
             <div ref={messagesEndRef} />
           </div>
@@ -209,7 +390,8 @@ const ChatWindow = ({ selectedChat, messages, onSendMessage, isMobile }) => {
               onKeyPress={handleKeyPress}
               placeholder="Type a message"
               rows="1"
-              className="flex-1 px-4 py-3 bg-transparent border-none outline-none resize-none text-gray-900 placeholder-gray-500 text-[15px] leading-5 max-h-[120px] overflow-y-auto"
+              disabled={sending}
+              className="flex-1 px-4 py-3 bg-transparent border-none outline-none resize-none text-gray-900 placeholder-gray-500 text-[15px] leading-5 max-h-[120px] overflow-y-auto disabled:opacity-50"
               style={{ 
                 fontSize: window.innerWidth < 768 ? '16px' : '15px',
                 lineHeight: '1.25'
@@ -230,10 +412,15 @@ const ChatWindow = ({ selectedChat, messages, onSendMessage, isMobile }) => {
             <button
               type="button"
               onClick={handleSendMessage}
-              className="flex-shrink-0 w-12 h-12 bg-whatsapp-green text-white rounded-full hover:bg-green-600 active:scale-95 transition-all duration-200 flex items-center justify-center shadow-lg touch-target"
+              disabled={sending}
+              className="flex-shrink-0 w-12 h-12 bg-whatsapp-green text-white rounded-full hover:bg-green-600 active:scale-95 transition-all duration-200 flex items-center justify-center shadow-lg touch-target disabled:opacity-50 disabled:cursor-not-allowed"
               title="Send"
             >
-              <PaperAirplaneIcon className="w-5 h-5" />
+              {sending ? (
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+              ) : (
+                <PaperAirplaneIcon className="w-5 h-5" />
+              )}
             </button>
           ) : (
             <button

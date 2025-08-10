@@ -3,12 +3,10 @@ import ChatSidebar from './components/ChatSidebar';
 import ChatWindow from './components/ChatWindow';
 import AddContactModal from './components/AddContactModal';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
-import { API_ENDPOINTS, apiRequest } from './config/api.js';
+import { apiClient } from './config/api'; // Use your existing API client
 
 const App = () => {
-  const [conversations, setConversations] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
-  const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
@@ -23,132 +21,30 @@ const App = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Initial loading check - test backend connection
   useEffect(() => {
-    fetchConversations();
+    testBackendConnection();
   }, []);
 
-  useEffect(() => {
-    if (selectedChat) {
-      fetchMessages(selectedChat.waId);
-    }
-  }, [selectedChat]);
-
-  const fetchConversations = async () => {
+  const testBackendConnection = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      const data = await apiRequest(API_ENDPOINTS.CONVERSATIONS);
+      // Test backend health endpoint
+      const response = await apiClient.get('/health');
       
-      if (data.success) {
-        setConversations(data.data);
-        if (data.data.length > 0 && !selectedChat && !isMobile) {
-          setSelectedChat(data.data[0]);
-        }
+      if (response.status === 'OK') {
+        console.log('✅ Backend connection successful');
+        setError(null);
       } else {
-        setError('Failed to fetch conversations');
+        setError('Backend service not responding properly');
       }
     } catch (error) {
-      console.error('Error fetching conversations:', error);
-      setError('Failed to connect to server. Please check your internet connection.');
+      console.error('❌ Backend connection failed:', error);
+      setError('Failed to connect to backend service. Please check your connection.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchMessages = async (waId) => {
-    try {
-      const data = await apiRequest(API_ENDPOINTS.MESSAGES(waId));
-      
-      if (data.success) {
-        const sortedMessages = (data.data.messages || []).sort((a, b) => 
-          new Date(a.timestamp) - new Date(b.timestamp)
-        );
-        setMessages(sortedMessages);
-      } else {
-        setError('Failed to fetch messages');
-      }
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-      setError('Failed to fetch messages');
-    }
-  };
-
-  const handleSendMessage = async (messageText) => {
-    if (!selectedChat || !messageText.trim()) return;
-
-    try {
-      const optimisticMessage = {
-        _id: `temp-${Date.now()}-${Math.random()}`,
-        messageId: `temp-${Date.now()}`,
-        text: messageText,
-        type: 'outgoing',
-        status: 'sending',
-        timestamp: new Date().toISOString(),
-        messageType: 'text'
-      };
-
-      setMessages(prevMessages => [...prevMessages, optimisticMessage]);
-
-      const data = await apiRequest(API_ENDPOINTS.SEND_MESSAGE, {
-        method: 'POST',
-        body: JSON.stringify({
-          waId: selectedChat.waId,
-          text: messageText
-        }),
-      });
-
-      if (data.success) {
-        setMessages(prevMessages => 
-          prevMessages.map(msg => 
-            msg._id === optimisticMessage._id 
-              ? { ...data.data, status: 'sent' }
-              : msg
-          )
-        );
-
-        setConversations(prevConvs => 
-          prevConvs.map(conv => 
-            conv.waId === selectedChat.waId 
-              ? { ...conv, lastMessage: messageText, lastMessageTime: new Date() }
-              : conv
-          )
-        );
-
-        // Status progression simulation
-        setTimeout(() => {
-          setMessages(prevMessages => 
-            prevMessages.map(msg => 
-              msg.messageId === data.data.messageId 
-                ? { ...msg, status: 'delivered' }
-                : msg
-            )
-          );
-        }, 1000);
-
-        setTimeout(() => {
-          setMessages(prevMessages => 
-            prevMessages.map(msg => 
-              msg.messageId === data.data.messageId 
-                ? { ...msg, status: 'read' }
-                : msg
-            )
-          );
-        }, 2000);
-      } else {
-        setMessages(prevMessages => 
-          prevMessages.filter(msg => msg._id !== optimisticMessage._id)
-        );
-        setError('Failed to send message');
-        setTimeout(() => setError(null), 3000);
-      }
-    } catch (error) {
-      console.error('Error sending message:', error);
-      setMessages(prevMessages => 
-        prevMessages.filter(msg => msg._id !== optimisticMessage._id)
-      );
-      setError('Failed to send message. Please try again.');
-      setTimeout(() => setError(null), 3000);
     }
   };
 
@@ -162,9 +58,19 @@ const App = () => {
   };
 
   const handleAddContact = (newContact) => {
-    setConversations(prevConvs => [newContact, ...prevConvs]);
+    // The ChatSidebar will refresh its conversations automatically
     setSelectedChat(newContact);
     setShowAddContactModal(false);
+    
+    // Clear any existing errors
+    setError(null);
+    
+    console.log('✅ New contact added:', newContact);
+  };
+
+  const handleRetryConnection = () => {
+    setError(null);
+    testBackendConnection();
   };
 
   if (loading) {
@@ -172,25 +78,31 @@ const App = () => {
       <div className="flex items-center justify-center h-screen bg-whatsapp-bg">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-whatsapp-green border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 text-sm md:text-base">Loading WhatsApp...</p>
+          <p className="text-gray-600 text-sm md:text-base">Connecting to WhatsApp Backend...</p>
+          <p className="text-gray-500 text-xs mt-2">Testing connection to https://whatsapp-backend-tsoe.onrender.com</p>
         </div>
       </div>
     );
   }
 
-  if (error && conversations.length === 0) {
+  if (error) {
     return (
       <div className="flex items-center justify-center h-screen bg-whatsapp-bg px-4">
         <div className="text-center max-w-md">
           <div className="text-red-500 text-4xl mb-4">⚠️</div>
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">Connection Error</h2>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">Backend Connection Error</h2>
           <p className="text-gray-600 mb-4">{error}</p>
-          <button 
-            onClick={fetchConversations}
-            className="px-6 py-3 bg-whatsapp-green text-white rounded-full hover:bg-green-600 transition-colors font-medium"
-          >
-            Try Again
-          </button>
+          <div className="space-y-2">
+            <button 
+              onClick={handleRetryConnection}
+              className="w-full px-6 py-3 bg-whatsapp-green text-white rounded-full hover:bg-green-600 transition-colors font-medium"
+            >
+              Retry Connection
+            </button>
+            <p className="text-xs text-gray-500">
+              Backend: https://whatsapp-backend-tsoe.onrender.com
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -209,24 +121,30 @@ const App = () => {
               <ArrowLeftIcon className="w-6 h-6 text-gray-700" />
             </button>
             <div className="flex items-center flex-1">
-              <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center mr-3">
+              <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center mr-3 overflow-hidden">
                 {selectedChat.profilePic ? (
                   <img
                     src={selectedChat.profilePic}
-                    alt={selectedChat.name}
+                    alt={selectedChat.name || selectedChat.waId}
                     className="w-10 h-10 rounded-full object-cover"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.style.display = 'flex';
+                    }}
                   />
-                ) : (
-                  <span className="text-white font-medium text-sm">
-                    {selectedChat.name?.charAt(0)?.toUpperCase() || '?'}
-                  </span>
-                )}
+                ) : null}
+                <span 
+                  className="text-white font-medium text-sm"
+                  style={{ display: selectedChat.profilePic ? 'none' : 'flex' }}
+                >
+                  {(selectedChat.name || selectedChat.waId)?.charAt(0)?.toUpperCase() || '?'}
+                </span>
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-medium text-gray-900 truncate text-sm">
-                  {selectedChat.name}
+                  {selectedChat.name || selectedChat.waId}
                 </h3>
-                <p className="text-xs text-gray-500">online</p>
+                <p className="text-xs text-gray-500">WhatsApp contact</p>
               </div>
             </div>
           </div>
@@ -239,11 +157,9 @@ const App = () => {
           bg-white border-r border-gray-200
         `}>
           <ChatSidebar
-            conversations={conversations}
             selectedChat={selectedChat}
             onChatSelect={handleChatSelect}
             onAddContact={() => setShowAddContactModal(true)}
-            onRefresh={fetchConversations}
           />
         </div>
 
@@ -255,8 +171,6 @@ const App = () => {
         `}>
           <ChatWindow
             selectedChat={selectedChat}
-            messages={messages}
-            onSendMessage={handleSendMessage}
             isMobile={isMobile}
           />
         </div>

@@ -7,11 +7,55 @@ import {
   ChatBubbleLeftRightIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
+import { apiClient } from '../config/api'; // Import your API client
 
-const ChatSidebar = ({ conversations, selectedChat, onChatSelect, onAddContact, onRefresh }) => {
+const ChatSidebar = ({ selectedChat, onChatSelect, onAddContact }) => {
+  const [conversations, setConversations] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filteredConversations, setFilteredConversations] = useState(conversations);
+  const [filteredConversations, setFilteredConversations] = useState([]);
   const [activeTab, setActiveTab] = useState('chats');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Fetch conversations from backend
+  useEffect(() => {
+    const fetchConversations = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const response = await apiClient.get('/api/conversations');
+        
+        if (response.success) {
+          setConversations(response.data);
+        } else {
+          setError('Failed to load conversations');
+        }
+      } catch (err) {
+        console.error('Error fetching conversations:', err);
+        setError('Unable to connect to backend');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchConversations();
+  }, []);
+
+  // Refresh function
+  const handleRefresh = async () => {
+    try {
+      setError(null);
+      const response = await apiClient.get('/api/conversations');
+      
+      if (response.success) {
+        setConversations(response.data);
+      }
+    } catch (err) {
+      console.error('Error refreshing conversations:', err);
+      setError('Unable to refresh conversations');
+    }
+  };
 
   // Update filtered conversations whenever conversations or search term changes
   useEffect(() => {
@@ -33,6 +77,8 @@ const ChatSidebar = ({ conversations, selectedChat, onChatSelect, onAddContact, 
   }, [conversations, searchQuery]);
 
   const formatTime = (timestamp) => {
+    if (!timestamp) return '';
+    
     const now = new Date();
     const msgTime = new Date(timestamp);
     const diffInHours = (now - msgTime) / (1000 * 60 * 60);
@@ -49,7 +95,7 @@ const ChatSidebar = ({ conversations, selectedChat, onChatSelect, onAddContact, 
   };
 
   const highlightText = (text, query) => {
-    if (!query.trim()) return text;
+    if (!query.trim() || !text) return text;
     const parts = text.split(new RegExp(`(${query})`, 'gi'));
     return parts.map((part, index) =>
       part.toLowerCase() === query.toLowerCase() ? (
@@ -68,6 +114,31 @@ const ChatSidebar = ({ conversations, selectedChat, onChatSelect, onAddContact, 
   const clearSearch = () => {
     setSearchQuery('');
   };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="h-full flex flex-col bg-white">
+        <div className="bg-whatsapp-header border-b border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-semibold text-gray-800">WhatsApp</h1>
+            <button 
+              onClick={onAddContact}
+              className="p-2 text-gray-600 hover:bg-gray-200 rounded-full transition-colors"
+            >
+              <UserPlusIcon className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-whatsapp-green mx-auto mb-4"></div>
+            <p className="text-gray-500">Loading conversations...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -88,7 +159,11 @@ const ChatSidebar = ({ conversations, selectedChat, onChatSelect, onAddContact, 
             >
               <UserPlusIcon className="w-5 h-5" />
             </button>
-            <button className="p-2 text-gray-600 hover:bg-gray-200 rounded-full transition-colors touch-target">
+            <button 
+              onClick={handleRefresh}
+              className="p-2 text-gray-600 hover:bg-gray-200 rounded-full transition-colors touch-target"
+              title="Refresh"
+            >
               <EllipsisVerticalIcon className="w-5 h-5" />
             </button>
           </div>
@@ -150,14 +225,31 @@ const ChatSidebar = ({ conversations, selectedChat, onChatSelect, onAddContact, 
         </div>
       </div>
 
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border-l-4 border-red-400 p-4 m-4">
+          <div className="flex">
+            <div className="ml-3">
+              <p className="text-sm text-red-700">{error}</p>
+              <button 
+                onClick={handleRefresh}
+                className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Chat List */}
       <div className="flex-1 overflow-y-auto">
         {filteredConversations.length > 0 ? (
           filteredConversations
-            .filter(conv => activeTab === 'chats' || conv.unreadCount > 0)
+            .filter(conv => activeTab === 'chats' || (conv.unreadCount && conv.unreadCount > 0))
             .map((conversation, index) => (
             <div
-              key={conversation.waId}
+              key={conversation._id || conversation.waId}
               className={`
                 flex items-center px-4 py-3 cursor-pointer border-b border-gray-100 transition-all duration-200
                 hover:bg-gray-50 active:bg-gray-100 touch-target
@@ -176,17 +268,19 @@ const ChatSidebar = ({ conversations, selectedChat, onChatSelect, onAddContact, 
                       src={conversation.profilePic}
                       alt={conversation.name || conversation.waId}
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'flex';
+                      }}
                     />
-                  ) : (
-                    <span className="text-gray-600 font-semibold text-lg">
-                      {(conversation.name || conversation.waId).charAt(0).toUpperCase()}
-                    </span>
-                  )}
+                  ) : null}
+                  <span 
+                    className="text-gray-600 font-semibold text-lg"
+                    style={{ display: conversation.profilePic ? 'none' : 'flex' }}
+                  >
+                    {(conversation.name || conversation.waId).charAt(0).toUpperCase()}
+                  </span>
                 </div>
-                {/* Online indicator for demo */}
-                {index < 2 && (
-                  <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
-                )}
               </div>
 
               {/* Chat Info */}
@@ -199,7 +293,7 @@ const ChatSidebar = ({ conversations, selectedChat, onChatSelect, onAddContact, 
                     }
                   </h3>
                   <span className="text-xs text-gray-500 flex-shrink-0 ml-2">
-                    {conversation.lastMessageTime ? formatTime(conversation.lastMessageTime) : ''}
+                    {formatTime(conversation.lastMessageTime || conversation.updatedAt)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">

@@ -1,22 +1,26 @@
 {
   "version": 2,
   "name": "whatsapp-frontend",
-  "buildCommand": "cd frontend && npm run build",
-  "outputDirectory": "frontend/dist",
-  "installCommand": "cd frontend && npm install",
-  "framework": "vite",
-  "rewrites": [
+  "builds": [
     {
-      "source": "/((?!api/.*).*)",
-      "destination": "/index.html"
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "frontend/dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/index.html"
     }
   ],
   "env": {
-    "NODE_ENV": "production"
-  },
-  "build": {
-    "env": {
-      "REACT_APP_API_URL": "https://whatsapp-backend-xxxx.onrender.com"
-    }
+    "NODE_ENV": "production",
+    "VITE_API_BASE_URL": "https://whatsapp-backend-tsoe.onrender.com"
   }
 }

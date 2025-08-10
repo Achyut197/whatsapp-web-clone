@@ -1,51 +1,64 @@
-// API Configuration for different environments
-const getApiBaseUrl = () => {
-  // Check if we're in production
-  if (import.meta.env.PROD) {
-    // Use environment variable or fallback to your production backend URL
-    return import.meta.env.VITE_API_BASE_URL || 'https://whatsapp-backend-xxxx.onrender.com';
+// API Configuration for WhatsApp Frontend
+const API_CONFIG = {
+  // Production backend URL from Render
+  BASE_URL: process.env.REACT_APP_API_URL || 'https://whatsapp-backend-tsoe.onrender.com',
+  
+  // API endpoints
+  ENDPOINTS: {
+    HEALTH: '/health',
+    CONVERSATIONS: '/api/conversations',
+    MESSAGES: '/api/messages',
+    CONTACTS: '/api/contacts',
+    SEND_MESSAGE: '/api/messages/send'
+  },
+  
+  // Request configuration
+  TIMEOUT: 10000,
+  HEADERS: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
   }
-  
-  // Development environment
-  return 'http://localhost:5000';
 };
 
-export const API_BASE_URL = getApiBaseUrl();
-
-// API endpoints configuration
-export const API_ENDPOINTS = {
-  // Health check
-  HEALTH: `${API_BASE_URL}/health`,
+export const apiClient = {
+  baseURL: API_CONFIG.BASE_URL,
   
-  // Main API endpoints
-  CONVERSATIONS: `${API_BASE_URL}/api/conversations`,
-  MESSAGES: (waId) => `${API_BASE_URL}/api/messages/${waId}`,
-  SEND_MESSAGE: `${API_BASE_URL}/api/send`,
-  ADD_CONTACT: `${API_BASE_URL}/api/add-contact`,
-  MARK_READ: (waId) => `${API_BASE_URL}/api/mark-read/${waId}`,
-};
-
-// API utility function
-export const apiRequest = async (url, options = {}) => {
-  const defaultOptions = {
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include', // Important for CORS
-  };
-
-  try {
-    const response = await fetch(url, { ...defaultOptions, ...options });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+  get: async (endpoint) => {
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
+        method: 'GET',
+        headers: API_CONFIG.HEADERS,
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('API GET Error:', error);
+      throw error;
     }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('API Request failed:', error);
-    throw error;
+  },
+  
+  post: async (endpoint, data) => {
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers: API_CONFIG.HEADERS,
+        body: JSON.stringify(data),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('API POST Error:', error);
+      throw error;
+    }
   }
 };
 
-export default API_BASE_URL;
+export default API_CONFIG;

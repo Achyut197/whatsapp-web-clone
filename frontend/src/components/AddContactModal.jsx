@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { XMarkIcon, UserPlusIcon } from '@heroicons/react/24/outline';
-import { API_ENDPOINTS, apiRequest } from '../config/api.js';
+import { apiClient } from '../config/api'; // Use your existing API client
 
 const AddContactModal = ({ isOpen, onClose, onAddContact }) => {
   const [formData, setFormData] = useState({
@@ -25,6 +25,18 @@ const AddContactModal = ({ isOpen, onClose, onAddContact }) => {
     return cleaned.length >= 10 && cleaned.length <= 15;
   };
 
+  const formatPhoneNumber = (phone) => {
+    // Remove all non-digits
+    const cleaned = phone.replace(/\D/g, '');
+    
+    // Ensure it starts with country code (add 91 for India if not present)
+    if (cleaned.length === 10 && !cleaned.startsWith('91')) {
+      return '91' + cleaned;
+    }
+    
+    return cleaned;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -42,25 +54,40 @@ const AddContactModal = ({ isOpen, onClose, onAddContact }) => {
     setError('');
 
     try {
-      const data = await apiRequest(API_ENDPOINTS.ADD_CONTACT, {
-        method: 'POST',
-        body: JSON.stringify({
-          waId: formData.waId.replace(/\D/g, ''),
-          name: formData.name || `Contact ${formData.waId}`,
-          profilePic: formData.profilePic || null
-        }),
+      const formattedWaId = formatPhoneNumber(formData.waId);
+      
+      const response = await apiClient.post('/api/contacts', {
+        waId: formattedWaId,
+        name: formData.name || `Contact ${formattedWaId}`,
+        profilePic: formData.profilePic || null
       });
 
-      if (data.success) {
-        onAddContact(data.data);
+      if (response.success) {
+        // Notify parent component about new contact
+        if (onAddContact) {
+          onAddContact(response.data);
+        }
+        
+        // Reset form and close modal
         setFormData({ waId: '', name: '', profilePic: '' });
         onClose();
+        
+        // Show success message (optional)
+        console.log('Contact added successfully:', response.data);
       } else {
-        setError(data.message || 'Failed to add contact');
+        setError(response.message || 'Failed to add contact');
       }
     } catch (error) {
       console.error('Error adding contact:', error);
-      setError('Failed to add contact. Please try again.');
+      
+      // Handle specific error cases
+      if (error.message.includes('already exists')) {
+        setError('This contact already exists');
+      } else if (error.message.includes('invalid phone')) {
+        setError('Invalid phone number format');
+      } else {
+        setError('Failed to add contact. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -109,6 +136,7 @@ const AddContactModal = ({ isOpen, onClose, onAddContact }) => {
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-whatsapp-green focus:border-transparent text-gray-900 text-base"
                 style={{ fontSize: window.innerWidth < 768 ? '16px' : '15px' }}
                 required
+                disabled={loading}
               />
               <p className="text-gray-500 mt-1 text-sm">
                 Enter phone number with country code (e.g., 919876543210)
@@ -129,6 +157,7 @@ const AddContactModal = ({ isOpen, onClose, onAddContact }) => {
                 placeholder="John Doe"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-whatsapp-green focus:border-transparent text-gray-900 text-base"
                 style={{ fontSize: window.innerWidth < 768 ? '16px' : '15px' }}
+                disabled={loading}
               />
               <p className="text-gray-500 mt-1 text-sm">
                 Optional: Will use phone number if not provided
@@ -149,6 +178,7 @@ const AddContactModal = ({ isOpen, onClose, onAddContact }) => {
                 placeholder="https://example.com/avatar.jpg"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-whatsapp-green focus:border-transparent text-gray-900 text-base"
                 style={{ fontSize: window.innerWidth < 768 ? '16px' : '15px' }}
+                disabled={loading}
               />
               <p className="text-gray-500 mt-1 text-sm">
                 Optional: URL to profile image
@@ -162,21 +192,46 @@ const AddContactModal = ({ isOpen, onClose, onAddContact }) => {
               </div>
             )}
 
+            {/* Success Preview */}
+            {formData.waId && !error && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <p className="text-green-700 text-sm">
+                  <strong>Contact Preview:</strong>
+                </p>
+                <p className="text-green-600 text-sm mt-1">
+                  📱 {formatPhoneNumber(formData.waId)}
+                </p>
+                {formData.name && (
+                  <p className="text-green-600 text-sm">
+                    👤 {formData.name}
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Buttons */}
             <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 pt-4">
               <button
                 type="button"
                 onClick={handleClose}
-                className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 active:bg-gray-100 transition-colors font-medium touch-target"
+                disabled={loading}
+                className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 active:bg-gray-100 transition-colors font-medium touch-target disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={loading}
-                className="flex-1 px-6 py-3 bg-whatsapp-green text-white rounded-lg hover:bg-green-600 active:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed font-medium touch-target"
+                disabled={loading || !formData.waId}
+                className="flex-1 px-6 py-3 bg-whatsapp-green text-white rounded-lg hover:bg-green-600 active:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed font-medium touch-target flex items-center justify-center"
               >
-                {loading ? 'Adding...' : 'Add Contact'}
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Adding...
+                  </>
+                ) : (
+                  'Add Contact'
+                )}
               </button>
             </div>
           </form>
