@@ -1,5 +1,24 @@
+const resolveBaseUrl = () => {
+  // Prefer explicit env var first
+  const envBase = import.meta.env.VITE_API_BASE_URL && String(import.meta.env.VITE_API_BASE_URL).trim();
+  if (envBase) return envBase.replace(/\/$/, '');
+
+  // In dev, default to local backend
+  if (import.meta.env.DEV) {
+    return 'http://localhost:10000';
+  }
+
+  // In production, try same-origin backend, otherwise fallback to known deployment
+  try {
+    const origin = window.location.origin;
+    return origin || 'https://whatsapp-backend-tsoe.onrender.com';
+  } catch {
+    return 'https://whatsapp-backend-tsoe.onrender.com';
+  }
+};
+
 const API_CONFIG = {
-  BASE_URL: import.meta.env.VITE_API_BASE_URL || 'https://whatsapp-backend-tsoe.onrender.com',
+  BASE_URL: resolveBaseUrl(),
   ENDPOINTS: {
     HEALTH: '/health',
     CONVERSATIONS: '/api/conversations',
@@ -7,11 +26,22 @@ const API_CONFIG = {
     CONTACTS: '/api/contacts',
     SEND_MESSAGE: '/api/messages/send'
   },
-  TIMEOUT: 10000,
+  TIMEOUT: 15000,
   HEADERS: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
   }
+};
+
+export const debugEnvVars = () => {
+  // Safe debug logging for dev
+  if (!import.meta.env.DEV) return;
+  // eslint-disable-next-line no-console
+  console.table({
+    VITE_API_BASE_URL: import.meta.env.VITE_API_BASE_URL || '(not set)',
+    Resolved_BASE_URL: API_CONFIG.BASE_URL,
+    Mode: import.meta.env.MODE,
+  });
 };
 
 export const apiClient = {
@@ -20,9 +50,10 @@ export const apiClient = {
     const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.TIMEOUT);
     
     try {
-      console.log(`🌐 API GET: ${API_CONFIG.BASE_URL}${endpoint}`);
+      const url = `${API_CONFIG.BASE_URL}${endpoint}`;
+      console.log(`🌐 API GET: ${url}`);
       
-      const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
+      const response = await fetch(url, {
         method: 'GET',
         headers: API_CONFIG.HEADERS,
         signal: controller.signal,
@@ -32,7 +63,8 @@ export const apiClient = {
       clearTimeout(timeoutId);
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const text = await response.text().catch(() => '');
+        throw new Error(`HTTP ${response.status} ${response.statusText} ${text ? `- ${text}` : ''}`);
       }
       
       const data = await response.json();
@@ -60,9 +92,10 @@ export const apiClient = {
     const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.TIMEOUT);
     
     try {
-      console.log(`🌐 API POST: ${API_CONFIG.BASE_URL}${endpoint}`, requestData);
+      const url = `${API_CONFIG.BASE_URL}${endpoint}`;
+      console.log(`🌐 API POST: ${url}`, requestData);
       
-      const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: API_CONFIG.HEADERS,
         body: JSON.stringify(requestData),
@@ -73,7 +106,8 @@ export const apiClient = {
       clearTimeout(timeoutId);
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const text = await response.text().catch(() => '');
+        throw new Error(`HTTP ${response.status} ${response.statusText} ${text ? `- ${text}` : ''}`);
       }
       
       const data = await response.json();

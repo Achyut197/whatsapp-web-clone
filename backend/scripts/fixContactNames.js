@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import connectDatabase from '../src/config/database.js';
 import Contact from '../src/models/Contact.js';
 import Message from '../src/models/Message.js';
-import { formatPhoneNumber, isValidWaId, generateMessagePreview } from '../src/helpers/helpers.js';
+import { formatPhoneNumber, isValidWaId, generateMessagePreview } from '../src/utils/helpers.js';
 
 // Handle ES modules __dirname
 const __filename = fileURLToPath(import.meta.url);

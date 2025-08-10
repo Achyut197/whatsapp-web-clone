@@ -6,13 +6,8 @@ const messageSchema = new mongoose.Schema({
     required: [true, 'Message ID is required'],
     unique: true,
     trim: true,
-    validate: {
-      validator: function(v) {
-        // Ensure messageId follows a consistent format
-        return /^msg[-_][a-zA-Z0-9\-_]+$/.test(v);
-      },
-      message: 'Message ID must follow format: msg-xxxxx or msg_xxxxx'
-    }
+    // Accept any non-empty string; upstream ensures uniqueness
+    minlength: [3, 'Message ID must be at least 3 characters']
   },
   waId: {
     type: String,
@@ -217,7 +212,7 @@ const messageSchema = new mongoose.Schema({
     enum: ['contact_added', 'contact_blocked', 'chat_cleared', 'user_joined', 'user_left'],
     default: null
   }
-}, {
+  }, {
   timestamps: true,
   collection: 'messages',
   // Add transformation for JSON output
@@ -529,4 +524,9 @@ messageSchema.post('save', function(error, doc, next) {
 
 const Message = mongoose.model('Message', messageSchema);
 
+// Also expose a model that points to the processed_messages collection (assignment requirement)
+const ProcessedMessage = mongoose.models.ProcessedMessage
+  || mongoose.model('ProcessedMessage', messageSchema, 'processed_messages');
+
+export { ProcessedMessage };
 export default Message;

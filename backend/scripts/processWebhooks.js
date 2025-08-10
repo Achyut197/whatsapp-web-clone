@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import connectDatabase from '../src/config/database.js';
 import Contact from '../src/models/Contact.js';
-import Message from '../src/models/Message.js';
+import Message, { ProcessedMessage } from '../src/models/Message.js';
 import { 
   generateMessageId, 
   formatPhoneNumber, 
@@ -11,7 +11,7 @@ import {
   sanitizeMessageText,
   generateMessagePreview,
   formatTimestamp
-} from '../src/helpers/helpers.js';
+} from '../src/utils/helpers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -406,6 +406,13 @@ class EnhancedDataProcessor {
             });
 
             await message.save();
+            try {
+              await ProcessedMessage.create({ ...message.toObject(), _id: undefined });
+            } catch (dupErr) {
+              if (dupErr?.code !== 11000) {
+                console.warn('⚠️ processed_messages insert warning:', dupErr.message);
+              }
+            }
             messageCount++;
             this.processedMessages++;
 

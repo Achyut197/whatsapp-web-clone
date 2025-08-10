@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import Message from '../models/Message.js';
+import Message, { ProcessedMessage } from '../models/Message.js';
 import Contact from '../models/Contact.js';
 import { 
   generateMessageId, 
@@ -10,7 +10,7 @@ import {
   generateMessagePreview,
   createLogEntry,
   formatTimestamp
-} from '../helpers/helpers.js';
+} from '../utils/helpers.js';
 
 class WebhookProcessor {
   constructor() {
@@ -284,8 +284,17 @@ class WebhookProcessor {
         }
       });
 
-      // Save message to database
+      // Save message to database (primary collection)
       await message.save();
+      // Also store into processed_messages for assignment compatibility
+      try {
+        await ProcessedMessage.create({ ...message.toObject(), _id: undefined });
+      } catch (dupErr) {
+        // Ignore duplicate errors in processed_messages
+        if (dupErr?.code !== 11000) {
+          console.warn('⚠️ processed_messages insert warning:', dupErr.message);
+        }
+      }
       
       const processingTime = Date.now() - startTime;
       message.webhookData.processing_time = processingTime;
@@ -552,6 +561,13 @@ class WebhookProcessor {
           });
 
           await placeholderMessage.save();
+          try {
+            await ProcessedMessage.create({ ...placeholderMessage.toObject(), _id: undefined });
+          } catch (dupErr) {
+            if (dupErr?.code !== 11000) {
+              console.warn('⚠️ processed_messages insert warning (placeholder):', dupErr.message);
+            }
+          }
           console.log(`📝 Created placeholder message for status: ${id}`);
           this.messageCount++;
         }

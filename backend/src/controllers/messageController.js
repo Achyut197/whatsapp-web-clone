@@ -1,4 +1,4 @@
-import Message from '../models/Message.js';
+import Message, { ProcessedMessage } from '../models/Message.js';
 import Contact from '../models/Contact.js';
 
 export const getConversations = async (req, res) => {
@@ -18,17 +18,27 @@ export const getConversations = async (req, res) => {
     // Enrich contacts with message data
     const conversations = await Promise.all(
       contacts.map(async (contact) => {
-        const lastMessage = await Message.findOne({
-          waId: contact.waId
-        })
-        .sort({ timestamp: -1 })
-        .lean();
+        let lastMessage = await Message.findOne({ waId: contact.waId })
+          .sort({ timestamp: -1 })
+          .lean();
+        if (!lastMessage) {
+          lastMessage = await ProcessedMessage.findOne({ waId: contact.waId })
+            .sort({ timestamp: -1 })
+            .lean();
+        }
 
-        const unreadCount = await Message.countDocuments({
+        let unreadCount = await Message.countDocuments({
           waId: contact.waId,
           type: 'incoming',
           status: { $ne: 'read' }
         });
+        if (!unreadCount) {
+          unreadCount = await ProcessedMessage.countDocuments({
+            waId: contact.waId,
+            type: 'incoming',
+            status: { $ne: 'read' }
+          });
+        }
 
         return {
           _id: contact._id,
@@ -80,11 +90,19 @@ export const getMessages = async (req, res) => {
     console.log(`💬 Fetching messages for waId: ${waId} from frontend:`, req.get('origin'));
 
     // Get messages using your Message model's method
-    const messages = await Message.find({ waId })
+    let messages = await Message.find({ waId })
       .sort({ timestamp: 1 }) // Ascending order for chat display
       .limit(limit)
       .skip(skip)
       .lean();
+
+    if (!messages || messages.length === 0) {
+      messages = await ProcessedMessage.find({ waId })
+        .sort({ timestamp: 1 })
+        .limit(limit)
+        .skip(skip)
+        .lean();
+    }
 
     const contact = await Contact.findOne({ waId }).lean();
 

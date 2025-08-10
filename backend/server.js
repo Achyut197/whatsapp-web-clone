@@ -177,30 +177,34 @@ app.use((req, res, next) => {
 
 const corsOptions = {
   origin: function (origin, callback) {
-    const allowedOrigins = [
-      process.env.FRONTEND_URL,                           // Your actual Vercel frontend
-      'https://whatsapp-web-clone-gamma.vercel.app',      // Your deployed frontend URL
-      'https://whatsapp-frontend-testing.vercel.app',    // Testing URL
-      'http://localhost:3000',                           // Local development
-      'http://localhost:5173',                           // Vite dev server
-      'http://localhost:4173',                           // Vite preview
-      'http://127.0.0.1:5173',                           // Alternative localhost
-      'http://127.0.0.1:3000'                            // Alternative localhost
+    const explicitOrigins = [
+      process.env.FRONTEND_URL,
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:4173',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3000'
     ].filter(Boolean);
 
-    // Allow requests with no origin (mobile apps, Postman, etc.)
+    const allowedPatterns = [
+      /https?:\/\/.*\.vercel\.app$/i,
+      /https?:\/\/.*\.vercel\.dev$/i,
+      /https?:\/\/.*\.onrender\.com$/i
+    ];
+
+    // Allow requests with no origin (mobile apps, Postman, curl)
     if (!origin) return callback(null, true);
-    
-    // Check if origin is allowed
-    if (allowedOrigins.some(allowedOrigin => 
-      origin === allowedOrigin || origin.startsWith(allowedOrigin)
-    )) {
-      callback(null, true);
-    } else {
-      console.warn(`🚫 CORS blocked origin: ${origin}`);
-      console.warn(`🔍 Allowed origins:`, allowedOrigins);
-      callback(new Error(`CORS policy violation: Origin ${origin} not allowed`));
+
+    const isExplicitAllowed = explicitOrigins.some((o) => origin === o || origin.startsWith(o));
+    const isPatternAllowed = allowedPatterns.some((re) => re.test(origin));
+
+    if (isExplicitAllowed || isPatternAllowed || (!isProduction && origin.startsWith('http://localhost'))) {
+      return callback(null, true);
     }
+
+    console.warn(`🚫 CORS blocked origin: ${origin}`);
+    console.warn(`🔍 Allowed explicit origins:`, explicitOrigins);
+    return callback(new Error(`CORS policy violation: Origin ${origin} not allowed`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],

@@ -135,8 +135,8 @@ const ChatWindow = ({ selectedChat, isMobile }) => {
 
     try {
       const response = await apiClient.post('/api/messages/send', {
-        to: selectedChat.waId,
-        body: messageText
+        waId: selectedChat.waId,
+        text: messageText
       });
 
       console.log('📤 Send message response:', response);
@@ -211,8 +211,8 @@ const ChatWindow = ({ selectedChat, isMobile }) => {
 
     try {
       const response = await apiClient.post('/api/messages/send', {
-        to: selectedChat.waId,
-        body: failedMessage.body
+        waId: selectedChat.waId,
+        text: failedMessage.body
       });
 
       if (response.success) {

@@ -175,7 +175,8 @@ router.get('/contacts', asyncHandler(async (req, res) => {
     console.log('👥 Processing get contacts request from:', req.get('origin'));
     
     // This could be enhanced to call a dedicated controller method
-    const { Contact } = await import('../models/Contact.js');
+    const ContactModule = await import('../models/Contact.js');
+    const Contact = ContactModule.default;
     
     const contacts = await Contact.find({ 
       isActive: true,
@@ -221,7 +222,8 @@ router.get('/search/messages', asyncHandler(async (req, res) => {
   }
   
   try {
-    const { Message } = await import('../models/Message.js');
+    const MessageModule = await import('../models/Message.js');
+    const Message = MessageModule.default;
     
     const searchQuery = waId 
       ? { waId, $text: { $search: query } }
@@ -265,7 +267,8 @@ router.get('/search/contacts', asyncHandler(async (req, res) => {
   }
   
   try {
-    const { Contact } = await import('../models/Contact.js');
+    const ContactModule = await import('../models/Contact.js');
+    const Contact = ContactModule.default;
     
     const contacts = await Contact.searchContacts(query, parseInt(limit));
     
