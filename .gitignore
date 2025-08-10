@@ -1,0 +1,63 @@
+# Environment Variables (CRITICAL - Protects your MongoDB credentials)
+backend/.env
+backend/.env.local
+backend/.env.development.local
+backend/.env.test.local
+backend/.env.production.local
+
+# Dependencies
+backend/node_modules/
+backend/npm-debug.log*
+backend/yarn-debug.log*
+backend/yarn-error.log*
+backend/package-lock.json
+
+# Logs
+backend/logs/
+backend/*.log
+
+# Runtime data
+backend/pids/
+backend/*.pid
+backend/*.seed
+backend/*.pid.lock
+
+# Coverage directory
+backend/coverage/
+backend/.nyc_output
+
+# Optional npm cache directory
+backend/.npm
+
+# Optional eslint cache
+backend/.eslintcache
+
+# Build directories
+backend/build/
+backend/dist/
+
+# Temporary folders
+backend/tmp/
+backend/temp/
+
+# IDE and Editor files
+backend/.vscode/
+backend/.idea/
+backend/*.swp
+backend/*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE_BIN/
+
+# Global patterns
+node_modules/
+*.log
+.env

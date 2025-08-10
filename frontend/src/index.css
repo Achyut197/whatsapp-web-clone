@@ -1,0 +1,260 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Segoe UI', 'Helvetica Neue', Helvetica, sans-serif;
+}
+
+/* WhatsApp Color Scheme */
+:root {
+  --whatsapp-green: #00a884;
+  --whatsapp-green-dark: #008069;
+  --whatsapp-bg: #f0f2f5;
+  --whatsapp-header: #f7f8fa;
+  --whatsapp-search: #f0f2f5;
+  --whatsapp-selected: #e7f3ff;
+  --whatsapp-chat: #efeae2;
+}
+
+/* Custom Classes */
+.bg-whatsapp-green { background-color: var(--whatsapp-green); }
+.bg-whatsapp-bg { background-color: var(--whatsapp-bg); }
+.bg-whatsapp-header { background-color: var(--whatsapp-header); }
+.bg-whatsapp-search { background-color: var(--whatsapp-search); }
+.bg-whatsapp-selected { background-color: var(--whatsapp-selected); }
+.bg-whatsapp-chat { background-color: var(--whatsapp-chat); }
+.text-whatsapp-green { color: var(--whatsapp-green); }
+
+/* Responsive Typography */
+@media (max-width: 640px) {
+  html { font-size: 14px; }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  html { font-size: 15px; }
+}
+
+@media (min-width: 1025px) {
+  html { font-size: 16px; }
+}
+
+/* Smooth Animations */
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+/* Mobile Scrollbar */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 3px;
+  }
+  
+  * {
+    scrollbar-width: thin;
+  }
+}
+
+/* Touch Targets */
+@media (max-width: 768px) {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  input, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Button Interactions */
+button {
+  transition: all 0.2s ease;
+}
+
+button:hover:not(:disabled) {
+  transform: scale(1.02);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Focus Styles */
+*:focus {
+  outline: 2px solid var(--whatsapp-green);
+  outline-offset: 2px;
+}
+
+/* Message Bubble Container fixes */
+.message-container {
+  position: relative;
+  min-height: 40px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Message text wrapper with proper spacing */
+.message-text-wrapper {
+  flex-grow: 1;
+  display: block;
+  min-height: 16px;
+  margin-bottom: 4px;
+}
+
+/* Message text styling */
+.message-text {
+  display: block;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  line-height: 1.4 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Time container positioning */
+.message-time-container {
+  position: absolute !important;
+  bottom: 4px !important;
+  right: 8px !important;
+  height: 16px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Message time styling */
+.message-time {
+  font-size: 11px !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  opacity: 0.8;
+  font-weight: 400 !important;
+}
+
+/* Status icons container */
+.message-status {
+  display: inline-flex !important;
+  align-items: center !important;
+  margin-left: 3px !important;
+  height: 16px !important;
+}
+
+/* High Contrast Support */
+@media (prefers-contrast: high) {
+  :root {
+    --whatsapp-green: #006b4f;
+  }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --whatsapp-bg: #0b141a;
+    --whatsapp-header: #202c33;
+    --whatsapp-search: #2a3942;
+    --whatsapp-selected: #2a3942;
+    --whatsapp-chat: #0b141a;
+  }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in {
+    animation: none;
+  }
+  
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Selection Colors */
+::selection {
+  background-color: rgba(0, 168, 132, 0.2);
+}
+
+/* Loading States */
+.loading-shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Utility Classes */
+.truncate-2-lines {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.glass-effect {
+  backdrop-filter: blur(10px);
+  background-color: rgba(255, 255, 255, 0.8);
+}
+
+/* Safe Areas */
+@supports (padding: max(0px)) {
+  .safe-top { padding-top: max(1rem, env(safe-area-inset-top)); }
+  .safe-bottom { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+  .safe-left { padding-left: max(1rem, env(safe-area-inset-left)); }
+  .safe-right { padding-right: max(1rem, env(safe-area-inset-right)); }
+}
+
+/* Prevent text selection for time and status */
+.message-time, .message-status {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+}

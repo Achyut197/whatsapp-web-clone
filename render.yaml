@@ -1,0 +1,54 @@
+# render.yaml for WhatsApp Web Clone Backend
+# Optimized for MongoDB database in Mumbai region
+
+services:
+  # WhatsApp Web Clone Backend Service
+  - type: web
+    name: whatsapp-backend
+    env: node
+    region: singapore              # ✅ Closest region to Mumbai for optimal performance
+    plan: free
+    
+    # Repository Configuration
+    rootDir: backend               # Points to your backend folder in monorepo
+    
+    # Build and Start Commands
+    buildCommand: npm install      # Installs all dependencies from package.json
+    startCommand: npm start        # Runs "node server.js"
+    
+    # Health Check Configuration
+    healthCheckPath: /health       # Uses your /health endpoint for monitoring
+    
+    # Deployment Configuration
+    autoDeploy: true              # Automatically deploys on git push to main branch
+    
+    # Environment Variables
+    envVars:
+      # Server Configuration
+      - key: NODE_ENV
+        value: production
+      
+      - key: PORT
+        value: 10000              # Render's assigned port
+      
+      # Database Configuration
+      - key: MONGODB_URI
+        sync: false               # You'll enter this securely in Render dashboard
+      
+      - key: DB_NAME
+        value: whatsapp
+      
+      # Frontend Configuration
+      - key: FRONTEND_URL
+        sync: false               # You'll set this after frontend deployment
+      
+      # Security Configuration
+      - key: WEBHOOK_VERIFY_TOKEN
+        value: your-webhook-verify-token
+      
+      - key: JWT_SECRET
+        generateValue: true       # Render will generate a secure random value
+
+# Optional: Preview Environments for Testing
+previews:
+  generation: automatic           # Creates preview deployments for pull requests
