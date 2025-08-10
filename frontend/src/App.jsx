@@ -3,7 +3,7 @@ import ChatSidebar from './components/ChatSidebar';
 import ChatWindow from './components/ChatWindow';
 import AddContactModal from './components/AddContactModal';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
-import { apiClient } from './config/api';
+import { apiClient, debugEnvVars } from './config/api';
 
 const App = () => {
   const [selectedChat, setSelectedChat] = useState(null);
@@ -21,6 +21,13 @@ const App = () => {
     
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Debug environment variables on app start
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      debugEnvVars();
+    }
   }, []);
 
   // Initial loading check - test backend connection
@@ -46,7 +53,8 @@ const App = () => {
       
       clearTimeout(timeoutId);
       
-      if (response.status === 'OK' || response.data?.status === 'OK') {
+      // ✅ FIXED: Check for "Active" status instead of "OK"
+      if (response.status === 'Active' || response.data?.status === 'Active') {
         console.log('✅ Backend connection successful');
         setConnectionStatus('connected');
         setError(null);
@@ -174,7 +182,10 @@ const App = () => {
             {connectionStatus === 'connecting' ? 'Connecting to WhatsApp Backend...' : 'Loading...'}
           </p>
           <p className="text-gray-500 text-xs mt-2">
-            Backend: https://whatsapp-backend-tsoe.onrender.com
+            {import.meta.env.VITE_APP_NAME || 'WhatsApp Web Clone'} v{import.meta.env.VITE_APP_VERSION || '1.0.0'}
+          </p>
+          <p className="text-gray-500 text-xs">
+            Backend: {import.meta.env.VITE_API_BASE_URL || 'https://whatsapp-backend-tsoe.onrender.com'}
           </p>
           {retryCount > 0 && (
             <p className="text-gray-400 text-xs mt-1">
@@ -207,7 +218,7 @@ const App = () => {
               Reload Page
             </button>
             <p className="text-xs text-gray-500">
-              Backend: https://whatsapp-backend-tsoe.onrender.com
+              Backend: {import.meta.env.VITE_API_BASE_URL || 'https://whatsapp-backend-tsoe.onrender.com'}
             </p>
             <p className="text-xs text-gray-400">
               If the issue persists, the backend server might be starting up (cold start).
@@ -227,7 +238,7 @@ const App = () => {
             <button
               onClick={handleBackToChats}
               className="mr-4 p-1 rounded-full hover:bg-gray-200 transition-colors"
-              type="button" // Prevent form submission
+              type="button"
             >
               <ArrowLeftIcon className="w-6 h-6 text-gray-700" />
             </button>

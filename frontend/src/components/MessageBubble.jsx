@@ -1,7 +1,7 @@
 import React from 'react';
 import { CheckIcon } from '@heroicons/react/24/outline';
 
-const MessageBubble = ({ message, isLast }) => {
+const MessageBubble = ({ message, isLast, onRetryMessage }) => {
   // Handle different backend data structures for message direction
   const isOutgoing = message.fromMe || message.type === 'outgoing' || message.direction === 'outbound';
   
@@ -64,7 +64,14 @@ const MessageBubble = ({ message, isLast }) => {
 
   // Handle different message content fields from backend
   const getMessageContent = () => {
-    return message.body || message.text || message.content || '';
+    const content = message.body || message.text || message.content || '';
+    
+    // Handle empty messages gracefully
+    if (!content && getMessageType() === 'text') {
+      return message.status === 'failed' ? 'Message failed to send' : '';
+    }
+    
+    return content;
   };
 
   // Get message type from backend data
@@ -201,6 +208,18 @@ const MessageBubble = ({ message, isLast }) => {
             </div>
           )}
         </div>
+
+        {/* Failed message retry button */}
+        {message.status === 'failed' && onRetryMessage && (
+          <div className="absolute -bottom-6 right-0">
+            <button
+              onClick={() => onRetryMessage(message)}
+              className="text-xs text-red-600 hover:text-red-800 underline"
+            >
+              Tap to retry
+            </button>
+          </div>
+        )}
 
         {/* Backend API indicator */}
         {message.source === 'api' && (

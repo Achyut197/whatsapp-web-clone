@@ -7,7 +7,7 @@ import {
   ChatBubbleLeftRightIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
-import { apiClient } from '../config/api'; // Import your API client
+import { apiClient } from '../config/api';
 
 const ChatSidebar = ({ selectedChat, onChatSelect, onAddContact }) => {
   const [conversations, setConversations] = useState([]);
@@ -24,16 +24,24 @@ const ChatSidebar = ({ selectedChat, onChatSelect, onAddContact }) => {
         setLoading(true);
         setError(null);
         
+        console.log('🔄 Fetching conversations...');
+        
         const response = await apiClient.get('/api/conversations');
         
+        console.log('📡 Conversations API Response:', response);
+        
         if (response.success) {
-          setConversations(response.data);
+          // ✅ FIXED: Use response.conversations instead of response.data
+          const conversationsList = response.conversations || [];
+          console.log('💬 Conversations received:', conversationsList.length);
+          setConversations(conversationsList);
         } else {
-          setError('Failed to load conversations');
+          console.error('❌ API returned success: false');
+          setError(response.message || 'Failed to load conversations');
         }
       } catch (err) {
-        console.error('Error fetching conversations:', err);
-        setError('Unable to connect to backend');
+        console.error('❌ Error fetching conversations:', err);
+        setError(`Unable to connect to backend: ${err.message}`);
       } finally {
         setLoading(false);
       }
@@ -46,14 +54,23 @@ const ChatSidebar = ({ selectedChat, onChatSelect, onAddContact }) => {
   const handleRefresh = async () => {
     try {
       setError(null);
+      console.log('🔄 Refreshing conversations...');
+      
       const response = await apiClient.get('/api/conversations');
       
+      console.log('📡 Refresh API Response:', response);
+      
       if (response.success) {
-        setConversations(response.data);
+        // ✅ FIXED: Use response.conversations instead of response.data
+        const conversationsList = response.conversations || [];
+        console.log('💬 Refreshed conversations:', conversationsList.length);
+        setConversations(conversationsList);
+      } else {
+        setError(response.message || 'Unable to refresh conversations');
       }
     } catch (err) {
-      console.error('Error refreshing conversations:', err);
-      setError('Unable to refresh conversations');
+      console.error('❌ Error refreshing conversations:', err);
+      setError(`Unable to refresh conversations: ${err.message}`);
     }
   };
 

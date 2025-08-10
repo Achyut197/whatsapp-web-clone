@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { XMarkIcon, UserPlusIcon } from '@heroicons/react/24/outline';
-import { apiClient } from '../config/api'; // Use your existing API client
+import { apiClient } from '../config/api';
 
 const AddContactModal = ({ isOpen, onClose, onAddContact }) => {
   const [formData, setFormData] = useState({
@@ -56,37 +56,58 @@ const AddContactModal = ({ isOpen, onClose, onAddContact }) => {
     try {
       const formattedWaId = formatPhoneNumber(formData.waId);
       
+      console.log('📤 Adding contact:', {
+        waId: formattedWaId,
+        name: formData.name || `Contact ${formattedWaId}`,
+        profilePic: formData.profilePic || null
+      });
+      
       const response = await apiClient.post('/api/contacts', {
         waId: formattedWaId,
         name: formData.name || `Contact ${formattedWaId}`,
         profilePic: formData.profilePic || null
       });
 
+      console.log('📡 Add contact API response:', response);
+
       if (response.success) {
+        // Handle different possible response structures
+        const newContact = response.contact || response.data || {
+          waId: formattedWaId,
+          name: formData.name || `Contact ${formattedWaId}`,
+          profilePic: formData.profilePic || null,
+          lastMessage: 'Click to start messaging',
+          lastMessageTime: new Date().toISOString(),
+          unreadCount: 0
+        };
+        
+        console.log('✅ Contact added successfully:', newContact);
+        
         // Notify parent component about new contact
         if (onAddContact) {
-          onAddContact(response.data);
+          onAddContact(newContact);
         }
         
         // Reset form and close modal
         setFormData({ waId: '', name: '', profilePic: '' });
         onClose();
         
-        // Show success message (optional)
-        console.log('Contact added successfully:', response.data);
       } else {
+        console.error('❌ API returned success: false');
         setError(response.message || 'Failed to add contact');
       }
     } catch (error) {
-      console.error('Error adding contact:', error);
+      console.error('❌ Error adding contact:', error);
       
       // Handle specific error cases
       if (error.message.includes('already exists')) {
         setError('This contact already exists');
       } else if (error.message.includes('invalid phone')) {
         setError('Invalid phone number format');
+      } else if (error.message.includes('CORS')) {
+        setError('Connection error. Please try again.');
       } else {
-        setError('Failed to add contact. Please try again.');
+        setError(`Failed to add contact: ${error.message}`);
       }
     } finally {
       setLoading(false);

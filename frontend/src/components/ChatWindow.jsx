@@ -10,7 +10,7 @@ import {
   EllipsisVerticalIcon
 } from '@heroicons/react/24/outline';
 import MessageBubble from './MessageBubble';
-import { apiClient } from '../config/api'; // Import your API client
+import { apiClient } from '../config/api';
 
 const ChatWindow = ({ selectedChat, isMobile }) => {
   const [newMessage, setNewMessage] = useState('');
@@ -50,16 +50,40 @@ const ChatWindow = ({ selectedChat, isMobile }) => {
       setLoading(true);
       setError(null);
       
+      console.log('🔄 Fetching messages for:', {
+        waId: selectedChat.waId,
+        name: selectedChat.name,
+        endpoint: `/api/messages/${selectedChat.waId}`
+      });
+      
       const response = await apiClient.get(`/api/messages/${selectedChat.waId}`);
       
+      console.log('📡 Full API Response:', response);
+      
+      // Handle different response structures
+      let messagesList = [];
+      
       if (response.success) {
-        setMessages(response.data);
+        // ✅ FIXED: Use response.messages instead of response.data
+        messagesList = response.messages || response.data || [];
+        
+        console.log('📨 Messages extracted:', {
+          count: messagesList.length,
+          messages: messagesList
+        });
+        
+        setMessages(messagesList);
+        
+        if (messagesList.length === 0) {
+          console.log('ℹ️ No messages found for this contact');
+        }
       } else {
-        setError('Failed to load messages');
+        console.error('❌ API returned success: false');
+        setError(response.message || 'Failed to load messages');
       }
     } catch (err) {
-      console.error('Error fetching messages:', err);
-      setError('Unable to load messages');
+      console.error('❌ Error fetching messages:', err);
+      setError(`Unable to load messages: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -115,12 +139,23 @@ const ChatWindow = ({ selectedChat, isMobile }) => {
         body: messageText
       });
 
+      console.log('📤 Send message response:', response);
+
       if (response.success) {
+        // ✅ FIXED: Handle the actual message structure from backend
+        const sentMessage = response.message || response.data || {
+          _id: `sent-${Date.now()}`,
+          body: messageText,
+          fromMe: true,
+          timestamp: new Date().toISOString(),
+          status: 'sent'
+        };
+        
         // Replace temp message with actual message from backend
         setMessages(prev => 
           prev.map(msg => 
             msg._id === tempMessage._id 
-              ? { ...response.data, status: 'sent' }
+              ? { ...sentMessage, status: 'sent' }
               : msg
           )
         );
@@ -181,10 +216,11 @@ const ChatWindow = ({ selectedChat, isMobile }) => {
       });
 
       if (response.success) {
+        const sentMessage = response.message || response.data || failedMessage;
         setMessages(prev => 
           prev.map(msg => 
             msg._id === failedMessage._id 
-              ? { ...response.data, status: 'sent' }
+              ? { ...sentMessage, status: 'sent' }
               : msg
           )
         );
@@ -350,6 +386,7 @@ const ChatWindow = ({ selectedChat, isMobile }) => {
                 <MessageBubble 
                   message={message}
                   isLast={index === messages.length - 1}
+                  onRetryMessage={retryFailedMessage}
                 />
                 {message.status === 'failed' && (
                   <div className="flex justify-end mb-2">

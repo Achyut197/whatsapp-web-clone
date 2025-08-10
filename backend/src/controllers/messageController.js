@@ -5,8 +5,7 @@ export const getConversations = async (req, res) => {
   try {
     console.log('📋 Fetching conversations for frontend:', req.get('origin'));
     
-    // Enhanced query with better sorting and filtering
-    const contacts = await Contact.find({ 
+    const contacts = await Contact.find({
       isBlocked: { $ne: true },
       $or: [
         { lastMessage: { $exists: true, $ne: "" } },
@@ -18,17 +17,14 @@ export const getConversations = async (req, res) => {
 
     console.log(`📊 Found ${contacts.length} conversations`);
 
-    // Enhanced conversation mapping with real message data
     const conversations = await Promise.all(
       contacts.map(async (contact) => {
-        // Get actual last message from Message collection
         const lastMessage = await Message.findOne({
           waId: contact.waId
         })
         .sort({ timestamp: -1 })
         .lean();
 
-        // Get unread count from messages
         const unreadCount = await Message.countDocuments({
           waId: contact.waId,
           type: 'incoming',
@@ -47,21 +43,20 @@ export const getConversations = async (req, res) => {
           status: lastMessage?.status || 'none',
           isBlocked: contact.isBlocked || false,
           metadata: contact.metadata || {},
-          // Frontend compatibility fields
           createdAt: contact.createdAt,
           updatedAt: contact.updatedAt || contact.lastMessageTime
         };
       })
     );
 
-    // Sort by last message time again after enrichment
     conversations.sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
 
     console.log(`✅ Returning ${conversations.length} enriched conversations to frontend`);
 
+    // ✅ FIXED: Return conversations directly at root level
     res.json({
       success: true,
-      data: conversations,
+      conversations: conversations,  // ✅ Frontend expects response.conversations
       count: conversations.length,
       timestamp: new Date().toISOString()
     });
@@ -71,6 +66,7 @@ export const getConversations = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch conversations',
+      conversations: [], // ✅ Always return empty array on error
       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
@@ -81,10 +77,9 @@ export const getMessages = async (req, res) => {
     const { waId } = req.params;
     const limit = parseInt(req.query.limit) || 50;
     const skip = parseInt(req.query.skip) || 0;
-
+    
     console.log(`💬 Fetching messages for waId: ${waId} from frontend:`, req.get('origin'));
 
-    // Enhanced message query with proper filtering
     const messages = await Message.find({ waId })
       .sort({ timestamp: 1 }) // Ascending order for chat display
       .limit(limit)
@@ -103,8 +98,8 @@ export const getMessages = async (req, res) => {
     const transformedMessages = messages.map(msg => ({
       _id: msg._id,
       messageId: msg.messageId,
-      body: msg.text || msg.body, // Frontend expects 'body' field
-      text: msg.text || msg.body, // Keep both for compatibility
+      body: msg.text || msg.body,
+      text: msg.text || msg.body,
       fromMe: msg.type === 'outgoing',
       type: msg.type || 'incoming',
       direction: msg.type === 'outgoing' ? 'outbound' : 'inbound',
@@ -114,34 +109,33 @@ export const getMessages = async (req, res) => {
       mediaData: msg.mediaData || null,
       media: msg.mediaData ? {
         url: msg.mediaData.url,
-        filename: msg.mediaData.filename,
-        filesize: msg.mediaData.filesize,
-        mimetype: msg.mediaData.mimetype
+        filename: msg.mediaData.fileName,
+        filesize: msg.mediaData.fileSize,
+        mimetype: msg.mediaData.mimeType
       } : null,
       contextInfo: msg.contextInfo || null,
       webhookData: msg.webhookData || null,
-      // Additional frontend fields
       source: 'api',
       waId: msg.waId,
       createdAt: msg.createdAt || msg.timestamp
     }));
 
+    // ✅ FIXED: Return messages directly at root level
     res.json({
       success: true,
-      data: {
-        contact: {
-          _id: contact?._id,
-          waId: contact?.waId || waId,
-          name: contact?.name || `Contact ${waId}`,
-          profilePic: contact?.profilePic || null
-        },
-        messages: transformedMessages,
-        pagination: {
-          limit,
-          skip,
-          total: transformedMessages.length,
-          hasMore: transformedMessages.length === limit
-        }
+      messages: transformedMessages,  // ✅ Frontend expects response.messages
+      contact: {
+        _id: contact?._id,
+        waId: contact?.waId || waId,
+        name: contact?.name || `Contact ${waId}`,
+        profilePic: contact?.profilePic || null
+      },
+      count: transformedMessages.length,
+      pagination: {
+        limit,
+        skip,
+        total: transformedMessages.length,
+        hasMore: transformedMessages.length === limit
       },
       timestamp: new Date().toISOString()
     });
@@ -151,6 +145,7 @@ export const getMessages = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch messages',
+      messages: [], // ✅ Always return empty array on error
       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
@@ -159,7 +154,7 @@ export const getMessages = async (req, res) => {
 export const sendMessage = async (req, res) => {
   try {
     const { waId, text, body, messageType = 'text' } = req.body;
-    const messageContent = text || body; // Accept both 'text' and 'body' from frontend
+    const messageContent = text || body;
 
     if (!waId || !messageContent) {
       return res.status(400).json({
@@ -170,7 +165,6 @@ export const sendMessage = async (req, res) => {
 
     console.log(`📤 Sending message to ${waId}: "${messageContent.substring(0, 50)}${messageContent.length > 50 ? '...' : ''}" from frontend:`, req.get('origin'));
 
-    // Generate unique message ID
     const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const timestamp = new Date();
 
@@ -180,7 +174,7 @@ export const sendMessage = async (req, res) => {
       fromNumber: process.env.SYSTEM_PHONE_NUMBER || '918329446654',
       toNumber: waId,
       text: messageContent,
-      body: messageContent, // Store in both fields for compatibility
+      body: messageContent,
       type: 'outgoing',
       status: 'sent',
       timestamp,
@@ -203,7 +197,7 @@ export const sendMessage = async (req, res) => {
     await message.save();
     console.log(`✅ Message saved with ID: ${message.messageId}`);
 
-    // Update or create contact
+    // Update contact
     await Contact.findOneAndUpdate(
       { waId },
       {
@@ -227,7 +221,7 @@ export const sendMessage = async (req, res) => {
 
     console.log(`📝 Updated contact last message for ${waId}`);
 
-    // Simulate message status progression for frontend
+    // Status progression simulation
     setTimeout(async () => {
       try {
         await Message.findByIdAndUpdate(message._id, {
@@ -252,10 +246,10 @@ export const sendMessage = async (req, res) => {
       }
     }, 3000);
 
-    // Return frontend-compatible response
+    // ✅ FIXED: Return message directly at root level
     res.status(201).json({
       success: true,
-      data: {
+      message: {  // ✅ Frontend expects response.message
         _id: message._id,
         messageId: message.messageId,
         body: message.text,
@@ -269,7 +263,6 @@ export const sendMessage = async (req, res) => {
         waId: message.waId,
         source: 'api'
       },
-      message: 'Message sent successfully',
       timestamp: new Date().toISOString()
     });
 
@@ -287,25 +280,23 @@ export const markAsRead = async (req, res) => {
   try {
     const { waId } = req.params;
     const { messageIds } = req.body;
-
+    
     console.log(`👁️ Marking messages as read for waId: ${waId} from frontend:`, req.get('origin'));
 
     const timestamp = new Date();
 
-    // Update contact unread count
     await Contact.findOneAndUpdate(
       { waId },
-      { 
+      {
         unreadCount: 0,
         'metadata.lastSeen': timestamp,
         'metadata.lastReadActivity': timestamp
       }
     );
 
-    // Update message status
-    const query = { 
-      waId, 
-      type: 'incoming', 
+    const query = {
+      waId,
+      type: 'incoming',
       status: { $ne: 'read' }
     };
 
@@ -315,7 +306,7 @@ export const markAsRead = async (req, res) => {
 
     const result = await Message.updateMany(
       query,
-      { 
+      {
         status: 'read',
         'metadata.readAt': timestamp
       }
@@ -355,15 +346,13 @@ export const addNewContact = async (req, res) => {
       });
     }
 
-    // Enhanced phone number validation and formatting
     const phoneRegex = /^\d{10,15}$/;
     let cleanedWaId = waId.toString().replace(/\D/g, '');
-    
-    // Add country code if missing (default to India +91)
+
     if (cleanedWaId.length === 10 && !cleanedWaId.startsWith('91')) {
       cleanedWaId = '91' + cleanedWaId;
     }
-    
+
     if (!phoneRegex.test(cleanedWaId)) {
       return res.status(400).json({
         success: false,
@@ -373,16 +362,14 @@ export const addNewContact = async (req, res) => {
 
     console.log(`➕ Adding new contact: ${name || cleanedWaId} (${cleanedWaId}) from frontend:`, req.get('origin'));
 
-    // Check for existing contact
     const existingContact = await Contact.findOne({ waId: cleanedWaId });
+    
     if (existingContact) {
       console.log(`⚠️ Contact already exists: ${existingContact.name}`);
-      
-      // Return existing contact in frontend-compatible format
       return res.status(409).json({
         success: false,
         message: 'Contact already exists',
-        data: {
+        contact: {  // ✅ Frontend expects response.contact
           _id: existingContact._id,
           waId: existingContact.waId,
           name: existingContact.name,
@@ -400,7 +387,6 @@ export const addNewContact = async (req, res) => {
 
     const timestamp = new Date();
 
-    // Create new contact with enhanced metadata
     const newContact = new Contact({
       waId: cleanedWaId,
       name: name || `Contact ${cleanedWaId}`,
@@ -427,11 +413,11 @@ export const addNewContact = async (req, res) => {
     await newContact.save();
     console.log(`✅ Created new contact: ${newContact.name} (${newContact.waId})`);
 
-    // Return frontend-compatible response
+    // ✅ FIXED: Return contact directly at root level
     res.status(201).json({
       success: true,
       message: 'Contact added successfully',
-      data: {
+      contact: {  // ✅ Frontend expects response.contact
         _id: newContact._id,
         waId: newContact.waId,
         name: newContact.name,
@@ -450,14 +436,13 @@ export const addNewContact = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error adding new contact:', error);
-    
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
         message: 'Contact with this phone number already exists'
       });
     }
-    
+
     res.status(500).json({
       success: false,
       message: 'Failed to add contact',
@@ -466,7 +451,6 @@ export const addNewContact = async (req, res) => {
   }
 };
 
-// Additional utility function for frontend health check
 export const getHealthStatus = async (req, res) => {
   try {
     const messageCount = await Message.countDocuments();
@@ -477,6 +461,7 @@ export const getHealthStatus = async (req, res) => {
 
     res.json({
       success: true,
+      status: 'Active', // ✅ Frontend expects "Active" not "OK"
       data: {
         status: 'healthy',
         database: 'connected',
