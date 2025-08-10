@@ -3,25 +3,61 @@ import Contact from '../models/Contact.js';
 
 export const getConversations = async (req, res) => {
   try {
-    console.log('📋 Fetching conversations...');
+    console.log('📋 Fetching conversations for frontend:', req.get('origin'));
     
-    const contacts = await Contact.find({ isBlocked: false })
-      .sort({ lastMessageTime: -1 })
-      .lean();
+    // Enhanced query with better sorting and filtering
+    const contacts = await Contact.find({ 
+      isBlocked: { $ne: true },
+      $or: [
+        { lastMessage: { $exists: true, $ne: "" } },
+        { lastMessageTime: { $exists: true } }
+      ]
+    })
+    .sort({ lastMessageTime: -1, createdAt: -1 })
+    .lean();
 
     console.log(`📊 Found ${contacts.length} conversations`);
 
-    const conversations = contacts.map(contact => ({
-      _id: contact._id,
-      waId: contact.waId,
-      name: contact.name,
-      profilePic: contact.profilePic,
-      lastMessage: contact.lastMessage || '',
-      lastMessageTime: contact.lastMessageTime || new Date(),
-      unreadCount: contact.unreadCount || 0,
-      isBlocked: contact.isBlocked || false,
-      metadata: contact.metadata
-    }));
+    // Enhanced conversation mapping with real message data
+    const conversations = await Promise.all(
+      contacts.map(async (contact) => {
+        // Get actual last message from Message collection
+        const lastMessage = await Message.findOne({
+          waId: contact.waId
+        })
+        .sort({ timestamp: -1 })
+        .lean();
+
+        // Get unread count from messages
+        const unreadCount = await Message.countDocuments({
+          waId: contact.waId,
+          type: 'incoming',
+          status: { $ne: 'read' }
+        });
+
+        return {
+          _id: contact._id,
+          waId: contact.waId,
+          name: contact.name || contact.waId,
+          profilePic: contact.profilePic || null,
+          lastMessage: lastMessage?.text || contact.lastMessage || 'No messages yet',
+          lastMessageTime: lastMessage?.timestamp || contact.lastMessageTime || contact.createdAt,
+          unreadCount: unreadCount,
+          type: lastMessage ? (lastMessage.type || 'incoming') : 'none',
+          status: lastMessage?.status || 'none',
+          isBlocked: contact.isBlocked || false,
+          metadata: contact.metadata || {},
+          // Frontend compatibility fields
+          createdAt: contact.createdAt,
+          updatedAt: contact.updatedAt || contact.lastMessageTime
+        };
+      })
+    );
+
+    // Sort by last message time again after enrichment
+    conversations.sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
+
+    console.log(`✅ Returning ${conversations.length} enriched conversations to frontend`);
 
     res.json({
       success: true,
@@ -46,10 +82,11 @@ export const getMessages = async (req, res) => {
     const limit = parseInt(req.query.limit) || 50;
     const skip = parseInt(req.query.skip) || 0;
 
-    console.log(`💬 Fetching messages for waId: ${waId}`);
+    console.log(`💬 Fetching messages for waId: ${waId} from frontend:`, req.get('origin'));
 
+    // Enhanced message query with proper filtering
     const messages = await Message.find({ waId })
-      .sort({ timestamp: 1 })
+      .sort({ timestamp: 1 }) // Ascending order for chat display
       .limit(limit)
       .skip(skip)
       .lean();
@@ -62,33 +99,51 @@ export const getMessages = async (req, res) => {
 
     console.log(`📨 Found ${messages.length} messages for ${contact?.name || waId}`);
 
+    // Transform messages for frontend compatibility
+    const transformedMessages = messages.map(msg => ({
+      _id: msg._id,
+      messageId: msg.messageId,
+      body: msg.text || msg.body, // Frontend expects 'body' field
+      text: msg.text || msg.body, // Keep both for compatibility
+      fromMe: msg.type === 'outgoing',
+      type: msg.type || 'incoming',
+      direction: msg.type === 'outgoing' ? 'outbound' : 'inbound',
+      status: msg.status || 'sent',
+      timestamp: msg.timestamp || msg.createdAt,
+      messageType: msg.messageType || 'text',
+      mediaData: msg.mediaData || null,
+      media: msg.mediaData ? {
+        url: msg.mediaData.url,
+        filename: msg.mediaData.filename,
+        filesize: msg.mediaData.filesize,
+        mimetype: msg.mediaData.mimetype
+      } : null,
+      contextInfo: msg.contextInfo || null,
+      webhookData: msg.webhookData || null,
+      // Additional frontend fields
+      source: 'api',
+      waId: msg.waId,
+      createdAt: msg.createdAt || msg.timestamp
+    }));
+
     res.json({
       success: true,
       data: {
         contact: {
+          _id: contact?._id,
           waId: contact?.waId || waId,
           name: contact?.name || `Contact ${waId}`,
           profilePic: contact?.profilePic || null
         },
-        messages: messages.map(msg => ({
-          _id: msg._id,
-          messageId: msg.messageId,
-          text: msg.text,
-          type: msg.type,
-          status: msg.status,
-          timestamp: msg.timestamp,
-          messageType: msg.messageType,
-          mediaData: msg.mediaData,
-          contextInfo: msg.contextInfo,
-          webhookData: msg.webhookData
-        })),
+        messages: transformedMessages,
         pagination: {
           limit,
           skip,
-          total: messages.length,
-          hasMore: messages.length === limit
+          total: transformedMessages.length,
+          hasMore: transformedMessages.length === limit
         }
-      }
+      },
+      timestamp: new Date().toISOString()
     });
 
   } catch (error) {
@@ -103,66 +158,119 @@ export const getMessages = async (req, res) => {
 
 export const sendMessage = async (req, res) => {
   try {
-    const { waId, text, messageType = 'text' } = req.body;
+    const { waId, text, body, messageType = 'text' } = req.body;
+    const messageContent = text || body; // Accept both 'text' and 'body' from frontend
 
-    if (!waId || !text) {
+    if (!waId || !messageContent) {
       return res.status(400).json({
         success: false,
-        message: 'waId and text are required'
+        message: 'waId and message content are required'
       });
     }
 
-    console.log(`📤 Sending message to ${waId}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+    console.log(`📤 Sending message to ${waId}: "${messageContent.substring(0, 50)}${messageContent.length > 50 ? '...' : ''}" from frontend:`, req.get('origin'));
+
+    // Generate unique message ID
+    const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const timestamp = new Date();
 
     const message = new Message({
-      messageId: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      messageId,
       waId,
-      fromNumber: '918329446654',
+      fromNumber: process.env.SYSTEM_PHONE_NUMBER || '918329446654',
       toNumber: waId,
-      text,
+      text: messageContent,
+      body: messageContent, // Store in both fields for compatibility
       type: 'outgoing',
       status: 'sent',
-      timestamp: new Date(),
+      timestamp,
       messageType,
       webhookData: {
         demo_message: true,
-        created_at: new Date(),
-        source: 'whatsapp-web-clone'
+        created_at: timestamp,
+        source: 'whatsapp-web-clone',
+        frontend_url: process.env.FRONTEND_URL
       },
       metadata: {
         platform: 'whatsapp-web-clone',
         userAgent: req.headers['user-agent'],
-        ipAddress: req.ip || req.connection.remoteAddress
+        ipAddress: req.ip || req.connection.remoteAddress,
+        sentAt: timestamp,
+        origin: req.get('origin')
       }
     });
 
     await message.save();
     console.log(`✅ Message saved with ID: ${message.messageId}`);
 
+    // Update or create contact
     await Contact.findOneAndUpdate(
       { waId },
       {
-        lastMessage: text,
-        lastMessageTime: new Date(),
-        'metadata.lastSeen': new Date()
+        $set: {
+          lastMessage: messageContent,
+          lastMessageTime: timestamp,
+          'metadata.lastSeen': timestamp,
+          'metadata.lastActivity': timestamp
+        },
+        $setOnInsert: {
+          name: `Contact ${waId}`,
+          waId,
+          profilePic: null,
+          unreadCount: 0,
+          isBlocked: false,
+          createdAt: timestamp
+        }
       },
-      { upsert: true }
+      { upsert: true, new: true }
     );
 
     console.log(`📝 Updated contact last message for ${waId}`);
 
+    // Simulate message status progression for frontend
+    setTimeout(async () => {
+      try {
+        await Message.findByIdAndUpdate(message._id, {
+          status: 'delivered',
+          'metadata.deliveredAt': new Date()
+        });
+        console.log(`📨 Message ${messageId} marked as delivered`);
+      } catch (err) {
+        console.warn('⚠️ Failed to update message status to delivered:', err.message);
+      }
+    }, 1000);
+
+    setTimeout(async () => {
+      try {
+        await Message.findByIdAndUpdate(message._id, {
+          status: 'read',
+          'metadata.readAt': new Date()
+        });
+        console.log(`👁️ Message ${messageId} marked as read`);
+      } catch (err) {
+        console.warn('⚠️ Failed to update message status to read:', err.message);
+      }
+    }, 3000);
+
+    // Return frontend-compatible response
     res.status(201).json({
       success: true,
       data: {
         _id: message._id,
         messageId: message.messageId,
+        body: message.text,
         text: message.text,
-        type: message.type,
-        status: message.status,
+        fromMe: true,
+        type: 'outgoing',
+        direction: 'outbound',
+        status: 'sent',
         timestamp: message.timestamp,
-        messageType: message.messageType
+        messageType: message.messageType,
+        waId: message.waId,
+        source: 'api'
       },
-      message: 'Message sent successfully'
+      message: 'Message sent successfully',
+      timestamp: new Date().toISOString()
     });
 
   } catch (error) {
@@ -180,26 +288,36 @@ export const markAsRead = async (req, res) => {
     const { waId } = req.params;
     const { messageIds } = req.body;
 
-    console.log(`👁️ Marking messages as read for waId: ${waId}`);
+    console.log(`👁️ Marking messages as read for waId: ${waId} from frontend:`, req.get('origin'));
 
+    const timestamp = new Date();
+
+    // Update contact unread count
     await Contact.findOneAndUpdate(
       { waId },
       { 
         unreadCount: 0,
-        'metadata.lastSeen': new Date()
+        'metadata.lastSeen': timestamp,
+        'metadata.lastReadActivity': timestamp
       }
     );
 
+    // Update message status
+    const query = { 
+      waId, 
+      type: 'incoming', 
+      status: { $ne: 'read' }
+    };
+
+    if (messageIds && messageIds.length > 0) {
+      query.messageId = { $in: messageIds };
+    }
+
     const result = await Message.updateMany(
-      { 
-        waId, 
-        type: 'incoming', 
-        status: { $ne: 'read' },
-        ...(messageIds && messageIds.length > 0 && { messageId: { $in: messageIds } })
-      },
+      query,
       { 
         status: 'read',
-        'metadata.readAt': new Date()
+        'metadata.readAt': timestamp
       }
     );
 
@@ -210,8 +328,10 @@ export const markAsRead = async (req, res) => {
       message: `Marked ${result.modifiedCount} messages as read`,
       data: {
         waId,
-        markedCount: result.modifiedCount
-      }
+        markedCount: result.modifiedCount,
+        timestamp
+      },
+      timestamp: new Date().toISOString()
     });
 
   } catch (error) {
@@ -235,8 +355,14 @@ export const addNewContact = async (req, res) => {
       });
     }
 
+    // Enhanced phone number validation and formatting
     const phoneRegex = /^\d{10,15}$/;
-    const cleanedWaId = waId.toString().replace(/\D/g, '');
+    let cleanedWaId = waId.toString().replace(/\D/g, '');
+    
+    // Add country code if missing (default to India +91)
+    if (cleanedWaId.length === 10 && !cleanedWaId.startsWith('91')) {
+      cleanedWaId = '91' + cleanedWaId;
+    }
     
     if (!phoneRegex.test(cleanedWaId)) {
       return res.status(400).json({
@@ -245,11 +371,14 @@ export const addNewContact = async (req, res) => {
       });
     }
 
-    console.log(`➕ Adding new contact: ${name || cleanedWaId} (${cleanedWaId})`);
+    console.log(`➕ Adding new contact: ${name || cleanedWaId} (${cleanedWaId}) from frontend:`, req.get('origin'));
 
+    // Check for existing contact
     const existingContact = await Contact.findOne({ waId: cleanedWaId });
     if (existingContact) {
       console.log(`⚠️ Contact already exists: ${existingContact.name}`);
+      
+      // Return existing contact in frontend-compatible format
       return res.status(409).json({
         success: false,
         message: 'Contact already exists',
@@ -258,34 +387,47 @@ export const addNewContact = async (req, res) => {
           waId: existingContact.waId,
           name: existingContact.name,
           profilePic: existingContact.profilePic,
-          lastMessage: existingContact.lastMessage,
-          lastMessageTime: existingContact.lastMessageTime,
-          unreadCount: existingContact.unreadCount
+          lastMessage: existingContact.lastMessage || 'No messages yet',
+          lastMessageTime: existingContact.lastMessageTime || existingContact.createdAt,
+          unreadCount: existingContact.unreadCount || 0,
+          type: 'none',
+          status: 'none',
+          createdAt: existingContact.createdAt,
+          updatedAt: existingContact.updatedAt
         }
       });
     }
 
+    const timestamp = new Date();
+
+    // Create new contact with enhanced metadata
     const newContact = new Contact({
       waId: cleanedWaId,
       name: name || `Contact ${cleanedWaId}`,
       profilePic: profilePic || null,
       lastMessage: '',
-      lastMessageTime: new Date(),
+      lastMessageTime: timestamp,
       unreadCount: 0,
       isBlocked: false,
+      createdAt: timestamp,
+      updatedAt: timestamp,
       metadata: {
         phoneNumber: cleanedWaId,
         createdBy: 'manual',
         source: 'whatsapp-web-clone',
-        createdAt: new Date(),
-        lastSeen: new Date(),
-        isOnline: false
+        createdAt: timestamp,
+        lastSeen: timestamp,
+        isOnline: false,
+        addedFrom: 'frontend',
+        origin: req.get('origin'),
+        userAgent: req.headers['user-agent']
       }
     });
 
     await newContact.save();
     console.log(`✅ Created new contact: ${newContact.name} (${newContact.waId})`);
 
+    // Return frontend-compatible response
     res.status(201).json({
       success: true,
       message: 'Contact added successfully',
@@ -294,11 +436,16 @@ export const addNewContact = async (req, res) => {
         waId: newContact.waId,
         name: newContact.name,
         profilePic: newContact.profilePic,
-        lastMessage: newContact.lastMessage,
+        lastMessage: 'Click to start messaging',
         lastMessageTime: newContact.lastMessageTime,
         unreadCount: newContact.unreadCount,
-        isBlocked: newContact.isBlocked
-      }
+        type: 'none',
+        status: 'none',
+        isBlocked: newContact.isBlocked,
+        createdAt: newContact.createdAt,
+        updatedAt: newContact.updatedAt
+      },
+      timestamp: new Date().toISOString()
     });
 
   } catch (error) {
@@ -315,6 +462,40 @@ export const addNewContact = async (req, res) => {
       success: false,
       message: 'Failed to add contact',
       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+// Additional utility function for frontend health check
+export const getHealthStatus = async (req, res) => {
+  try {
+    const messageCount = await Message.countDocuments();
+    const contactCount = await Contact.countDocuments();
+    const recentMessages = await Message.countDocuments({
+      timestamp: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        status: 'healthy',
+        database: 'connected',
+        frontend: process.env.FRONTEND_URL,
+        stats: {
+          totalMessages: messageCount,
+          totalContacts: contactCount,
+          recentMessages
+        },
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Health check failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Health check failed',
+      error: error.message
     });
   }
 };
